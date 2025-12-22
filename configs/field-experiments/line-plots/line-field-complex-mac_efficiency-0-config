@@ -1,0 +1,37 @@
+{
+    "diagram": "line",
+    "data": "/Users/alexanderlupatsiy/Documents/Uni/Masterarbeit/RobotNetwork/data_aggregated/mac-efficiency",
+    "outdir": "outputs/field-experiments/line-plots",
+    "schema": "schema/line.schema.json",
+    "params": {
+        "metric_name": "mac-efficiency",
+        "field_topology": "COMPLEX",
+        "mac_protocols": [
+            "ALOHA",
+            "CSMA",
+            "MeshRouter",
+            "RS-MiTra",
+            "RS-MiTra-NR",
+            "RS-MiTra-NAV",
+            "I-RS-MiTra",
+            "Mi-RS"
+        ],
+        "name": "complex",
+        "freeze_column": "numberNodes",
+        "freeze_value": 7,
+        "ordinal_x": true,
+        "x_column": "timeToNextMission",
+        "value_column": "mean",
+        "isFieldExperiments": true,
+        "width_factor": 0.75,
+        "x_order": [
+             30.0,
+            6.0,
+            4.0,
+            2.0,
+            1.0,
+            0.5,
+            0.25
+        ]
+    }
+}

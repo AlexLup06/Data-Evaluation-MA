@@ -1,0 +1,24 @@
+{
+    "diagram": "parallel",
+    "data": "/Users/alexanderlupatsiy/Documents/Uni/Masterarbeit/RobotNetwork/data_aggregated",
+    "outdir": "outputs/field-experiments/parallel-coordinates",
+    "params": {
+        "mac_protocols": [
+            "ALOHA",
+            "CSMA",
+            "MeshRouter",
+            "RS-MiTra",
+            "RS-MiTra-NR",
+            "RS-MiTra-NAV",
+            "I-RS-MiTra",
+            "Mi-RS"
+        ],
+        "name": "fully",
+        "freeze_nodes": 8,
+        "field_topology": "FULLY",
+        "freeze_time": 4,
+        "width_factor": 0.8,
+        "value_column": "mean",
+        "isFieldExperiments": true
+    }
+}

@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from math import ceil
 from typing import List, Tuple, Optional, Sequence
+from utils.naming import build_output_filename
 
 
 def _metadata_title(metadata: dict) -> str:
@@ -23,6 +24,23 @@ def _compute_edges(values: np.ndarray) -> np.ndarray:
     return np.concatenate([[left_edge], values[:-1] + diffs, [right_edge]])
 
 
+def _fill_missing_with_neighbor_mean(z_vals: np.ndarray) -> np.ndarray:
+    """Fill NaNs using the mean of available 8-neighbors (fewer on edges)."""
+    filled = z_vals.astype(float).copy()
+    rows, cols = filled.shape
+    nan_indices = np.argwhere(np.isnan(filled))
+    for r, c in nan_indices:
+        r0, r1 = max(0, r - 1), min(rows - 1, r + 1)
+        c0, c1 = max(0, c - 1), min(cols - 1, c + 1)
+        neighbors = filled[r0 : r1 + 1, c0 : c1 + 1].flatten()
+        # Exclude the center value.
+        neighbors = np.delete(neighbors, (r - r0) * (c1 - c0 + 1) + (c - c0))
+        valid = neighbors[np.isfinite(neighbors)]
+        if valid.size:
+            filled[r, c] = float(valid.mean())
+    return filled
+
+
 def plot_heatmap(
     data,
     x_column,
@@ -37,10 +55,12 @@ def plot_heatmap(
     y_order: Optional[Sequence] = None,
     colorbar_label: Optional[str] = None,
     y_axis_label: str = "",
-    filename_slug: Optional[str] = None,
+    metric_slug: Optional[str] = None,
     filename_tag: Optional[str] = None,
+    config_name: Optional[str] = None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    style: Optional[dict] = None,
 ):
     grid = _prepare_heatmap_arrays(
         data,
@@ -61,6 +81,12 @@ def plot_heatmap(
 
     plt.figure(figsize=(10, 6), dpi=300)
     cmap = "Greys" if monochrome else "cividis"
+    hstyle = (style or {}).get("heatmap", {})
+    title_size = hstyle.get("title", 13)
+    axis_label_size = hstyle.get("axis_label", 12)
+    tick_size = hstyle.get("tick", 10)
+    colorbar_size = hstyle.get("colorbar_label", axis_label_size)
+    meta_size = hstyle.get("meta", 8)
 
     mesh = plt.pcolormesh(
         grid["x_edges"],
@@ -73,22 +99,25 @@ def plot_heatmap(
     )
     ax = plt.gca()
     fig = plt.gcf()
-    _add_top_colorbar(fig, np.array([[ax]]), mesh, colorbar_label or value_column)
-    plt.xticks(grid["x_ticks"], grid["x_ticklabels"])
-    plt.yticks(grid["y_ticks"], grid["y_ticklabels"])
-    if y_axis_label:
-        plt.ylabel(y_axis_label)
+    _add_top_colorbar(fig, np.array([[ax]]), mesh, colorbar_label or value_column, labelsize=colorbar_size)
+    plt.xticks(grid["x_ticks"], grid["x_ticklabels"], fontsize=tick_size)
+    plt.yticks(grid["y_ticks"], grid["y_ticklabels"], fontsize=tick_size)
+    y_label = y_axis_label or "Time to next Mission (in seconds)"
+    if y_label:
+        plt.ylabel(y_label, fontsize=axis_label_size)
     else:
         plt.ylabel("")
-    plt.title(f"Heatmap of {value_column} by {x_column} and {y_column}")
+    plt.xlabel(str(x_column), fontsize=axis_label_size)
+    plt.title(
+        f"Heatmap of {value_column} by {x_column} and {y_column}",
+        fontsize=title_size,
+    )
     if metadata:
         meta_text = _metadata_title(metadata)
         if meta_text:
-            plt.suptitle(meta_text, fontsize=8, y=0.98)
-    base_label = filename_slug or colorbar_label or value_column
-    safe_label = str(base_label).replace(" ", "-").lower()
-    tag = f"{filename_tag}-" if filename_tag else ""
-    filename = f"heatmap_{tag}{safe_label}_by_{x_column}_and_{y_column}.png"
+            plt.suptitle(meta_text, fontsize=meta_size, y=0.98)
+    base_label = metric_slug or colorbar_label or value_column
+    filename = build_output_filename("heatmap", filename_tag, base_label, config_name)
     plt.savefig(os.path.join(output_path, filename))
     plt.close()
 
@@ -175,6 +204,7 @@ def _prepare_heatmap_arrays(
         z_vals = pivot_table.loc[y_labels, x_labels].to_numpy()
 
     z_vals = pivot_table.loc[y_labels, x_labels].to_numpy()
+    z_vals = _fill_missing_with_neighbor_mean(z_vals)
     if not np.isfinite(z_vals).any():
         raise ValueError(f"No finite values found for '{value_column}' after pivoting; check data contents.")
 
@@ -203,10 +233,12 @@ def plot_heatmap_grid(
     y_order: Optional[Sequence] = None,
     colorbar_label: Optional[str] = None,
     y_axis_label: str = "",
-    filename_slug: Optional[str] = None,
+    metric_slug: Optional[str] = None,
     filename_tag: Optional[str] = None,
+    config_name: Optional[str] = None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    style: Optional[dict] = None,
 ):
     """Plot multiple heatmaps in a facet grid to save space.
 
@@ -224,6 +256,13 @@ def plot_heatmap_grid(
     # Precompute grids to share color scale.
     grids = []
     z_min, z_max = vmin, vmax
+    hstyle = (style or {}).get("heatmap", {})
+    axis_label_size = hstyle.get("grid_axis_label", hstyle.get("axis_label", 11))
+    tick_size = hstyle.get("grid_tick", hstyle.get("tick", 9))
+    title_size = hstyle.get("grid_title", hstyle.get("title", 12))
+    colorbar_size = hstyle.get("colorbar_label", axis_label_size)
+    y_label = y_axis_label or "Time to next Mission (in seconds)"
+
     for entry in datasets:
         df, metadata, label = (entry[:3] if len(entry) >= 3 else entry)
         grid = _prepare_heatmap_arrays(
@@ -279,22 +318,22 @@ def plot_heatmap_grid(
         # Show x tick labels only on bottom row.
         is_bottom = idx // n_cols == n_rows - 1
         if is_bottom:
-            ax.set_xticklabels(grid["x_ticklabels"], rotation=45, ha="right")
-            ax.set_xlabel("Number of Nodes", fontsize=8)
+            ax.set_xticklabels(grid["x_ticklabels"], rotation=45, ha="right", fontsize=tick_size)
+            ax.set_xlabel("Number of Nodes", fontsize=axis_label_size)
         else:
             ax.set_xticklabels([])
         # Show y tick labels only on leftmost column.
         is_left = idx % n_cols == 0
         if is_left:
-            ax.set_yticklabels(grid["y_ticklabels"])
-            ax.set_ylabel(y_axis_label or "", fontsize=8)
-            if y_axis_label:
+            ax.set_yticklabels(grid["y_ticklabels"], fontsize=tick_size)
+            ax.set_ylabel(y_label or "", fontsize=axis_label_size)
+            if y_label:
                 ax.yaxis.set_label_coords(-0.12, 0.5)
         else:
             ax.set_yticklabels([])
             ax.set_ylabel("")
-        ax.set_title(label, fontsize=8)
-        ax.tick_params(labelsize=7)
+        ax.set_title(label, fontsize=title_size)
+        ax.tick_params(labelsize=tick_size)
 
     # Hide unused axes if datasets do not fill the grid.
     for ax in all_axes[len(datasets):]:
@@ -302,11 +341,9 @@ def plot_heatmap_grid(
 
     if mesh is not None:
         label = colorbar_label or value_column
-        _add_top_colorbar(fig, axes, mesh, label)
-    base_label = filename_slug or colorbar_label or value_column
-    safe_label = str(base_label).replace(" ", "-").lower()
-    tag = f"{filename_tag}-" if filename_tag else ""
-    filename = f"heatmap_grid-{tag}{len(datasets)}_{safe_label}.png"
+        _add_top_colorbar(fig, axes, mesh, label, labelsize=colorbar_size)
+    base_label = metric_slug or colorbar_label or value_column
+    filename = build_output_filename("heatmap", filename_tag, base_label, config_name)
     plt.savefig(os.path.join(output_path, filename))
     plt.close(fig)
 
@@ -327,10 +364,12 @@ def plot_heatmap_grid_matrix(
     colorbar_label: Optional[str] = None,
     split_rows: Optional[int] = None,
     y_axis_label: str = "",
-    filename_slug: Optional[str] = None,
+    metric_slug: Optional[str] = None,
     filename_tag: Optional[str] = None,
+    config_name: Optional[str] = None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    style: Optional[dict] = None,
 ):
     """Facet grid where rows=protocols (or similar) and cols=environments."""
     if not datasets:
@@ -375,16 +414,26 @@ def plot_heatmap_grid_matrix(
     # Determine row pagination if requested.
     pages = []
     split_rows_val = split_rows if split_rows and split_rows > 0 else None
-    if split_rows_val and n_rows > split_rows_val:
-        for i in range(0, n_rows, split_rows_val):
-            pages.append(row_labels[i : i + split_rows_val])
+    if split_rows_val:
+        first_block = min(int(split_rows_val), 5)
+        start = 0
+        pages.append(row_labels[start : start + first_block])
+        start += first_block
+        while start < n_rows:
+            pages.append(row_labels[start : start + 5])
+            start += 5
     else:
         pages.append(row_labels)
 
-    base_label = filename_slug or colorbar_label or value_column
-    safe_label = str(base_label).replace(" ", "-").lower()
-    tag = f"{filename_tag}-" if filename_tag else ""
-    filename_base = f"heatmap_grid-{tag}{len(datasets)}_{safe_label}"
+    base_label = metric_slug or colorbar_label or value_column
+    name_part = config_name or filename_tag
+
+    hstyle = (style or {}).get("heatmap", {})
+    axis_label_size = hstyle.get("grid_axis_label", hstyle.get("axis_label", 11))
+    tick_size = hstyle.get("grid_tick", hstyle.get("tick", 9))
+    title_size = hstyle.get("grid_title", hstyle.get("title", 12))
+    colorbar_size = hstyle.get("colorbar_label", axis_label_size)
+    y_label = y_axis_label or "Missin Interval (in seconds)"
 
     for page_idx, page_rows in enumerate(pages, start=1):
         page_n_rows = len(page_rows)
@@ -427,21 +476,21 @@ def plot_heatmap_grid_matrix(
             ax.set_yticks(grid["y_ticks"])
             # Only bottom row gets x tick labels.
             if r == page_n_rows - 1:
-                ax.set_xticklabels(grid["x_ticklabels"], rotation=45, ha="right")
-                ax.set_xlabel("Number of Nodes", fontsize=8)
+                ax.set_xticklabels(grid["x_ticklabels"], rotation=45, ha="right", fontsize=tick_size)
+                ax.set_xlabel("Number of Nodes", fontsize=axis_label_size)
             else:
                 ax.set_xticklabels([])
             # Only left column gets y tick labels.
             if c == 0:
-                ax.set_yticklabels(grid["y_ticklabels"])
-                ax.set_ylabel(y_axis_label or "", fontsize=8)
-                if y_axis_label:
+                ax.set_yticklabels(grid["y_ticklabels"], fontsize=tick_size)
+                ax.set_ylabel(y_label or "", fontsize=axis_label_size)
+                if y_label:
                     ax.yaxis.set_label_coords(-0.12, 0.5)
             else:
                 ax.set_yticklabels([])
                 ax.set_ylabel("")
-            ax.set_title(label, fontsize=8)
-            ax.tick_params(labelsize=7)
+            ax.set_title(label, fontsize=title_size)
+            ax.tick_params(labelsize=tick_size)
 
         # Hide unused axes.
         for r in range(page_n_rows):
@@ -452,17 +501,15 @@ def plot_heatmap_grid_matrix(
 
         if mesh is not None:
             label = colorbar_label or value_column
-            _add_top_colorbar(fig, axes, mesh, label)
+            _add_top_colorbar(fig, axes, mesh, label, labelsize=colorbar_size)
 
-        filename = filename_base
-        if len(pages) > 1:
-            filename = f"{filename}_part{page_idx}"
-        filename = f"{filename}.png"
+        part = page_idx if len(pages) > 1 else None
+        filename = build_output_filename("heatmap", filename_tag, base_label, config_name, part=part)
         plt.savefig(os.path.join(output_path, filename))
         plt.close(fig)
 
 
-def _add_top_colorbar(fig, axes, mesh, label: str):
+def _add_top_colorbar(fig, axes, mesh, label: str, labelsize: Optional[int] = None):
     # Simple top colorbar using Matplotlib positioning to avoid overlap.
     try:
         cbar = fig.colorbar(
@@ -489,3 +536,6 @@ def _add_top_colorbar(fig, axes, mesh, label: str):
         )
         cbar.ax.xaxis.set_ticks_position("top")
         cbar.ax.xaxis.set_label_position("top")
+    if labelsize:
+        cbar.ax.tick_params(labelsize=labelsize)
+        cbar.ax.xaxis.label.set_size(labelsize)

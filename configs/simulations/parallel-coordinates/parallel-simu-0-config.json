@@ -1,0 +1,24 @@
+{
+    "diagram": "parallel",
+    "data": "/Users/alexanderlupatsiy/Documents/Uni/Masterarbeit/lora-workspace/rlora/data_aggregated",
+    "outdir": "outputs/simulations/parallel-coordinates",
+    "params": {
+        "mac_protocols": [
+            "ALOHA",
+            "CSMA",
+            "MeshRouter",
+            "RS-MiTra",
+            "RS-MiTra-NR",
+            "RS-MiTra-NAV",
+            "I-RS-MiTra",
+            "Mi-RS"
+        ],
+        "environments": [
+            "300m"
+        ],
+        "freeze_nodes": 14,
+        "freeze_time": 2,
+        "value_column": "mean",
+        "isFieldExperiments": false
+    }
+}
